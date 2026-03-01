@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const https = require("https");
+const http = require("http");
 const crypto = require("crypto");
 const { Worker } = require("worker_threads");
 const { WebSocketServer, WebSocket } = require("ws");
@@ -15,7 +15,7 @@ const {
 } = require("./db/database");
 
 const HOST = "0.0.0.0";
-const PORT = 8443;
+const PORT = process.env.PORT || 8443;
 const INITIAL_MONEY = 100;
 const MAX_ROUNDS = 10;
 
@@ -142,14 +142,14 @@ async function cleanupSession(session, options = {}) {
           payload: { reason },
         });
       } catch (error) {
-        // Ignorado: el worker pudo terminar antes.
+        // Ignorado
       }
     }
 
     try {
       await worker.terminate();
     } catch (error) {
-      // Ignorado: worker ya finalizado.
+      // Ignorado
     }
   }
 }
@@ -258,12 +258,9 @@ function startGameForSession(session) {
     }
 
     if (!workerMessage || typeof workerMessage.type !== "string") {
-      sendMessage(
-        currentSession.socket,
-        "ERROR",
-        { message: "Mensaje invalido desde worker." },
-        currentSession.sessionId
-      );
+      sendMessage(currentSession.socket, "ERROR", {
+        message: "Mensaje invalido desde worker.",
+      });
       return;
     }
 
@@ -404,7 +401,7 @@ async function handleMessage(socket, rawData) {
     try {
       socket.close(1008, "Invalid session");
     } catch (error) {
-      // Socket posiblemente ya cerrado.
+      // Socket ya cerrado
     }
     return;
   }
@@ -429,36 +426,15 @@ async function handleMessage(socket, rawData) {
       await handleGetHistory(session);
       break;
     default:
-      sendMessage(
-        socket,
-        "ERROR",
-        { message: "Tipo de mensaje no soportado por el protocolo." },
-        session.sessionId
-      );
+      sendMessage(socket, "ERROR", {
+        message: "Tipo de mensaje no soportado.",
+      }, session.sessionId);
       break;
   }
 }
 
-function loadTlsCredentials() {
-  const keyPath = path.join(__dirname, "certs", "server.key");
-  const certPath = path.join(__dirname, "certs", "server.crt");
-
-  if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-    throw new Error(
-      "Faltan certificados TLS. Revisa blackjack-server/certs/README.md"
-    );
-  }
-
-  return {
-    key: fs.readFileSync(keyPath),
-    cert: fs.readFileSync(certPath),
-  };
-}
-
 async function gracefulShutdown(httpServer, wss) {
-  if (shuttingDown) {
-    return;
-  }
+  if (shuttingDown) return;
   shuttingDown = true;
 
   const sessions = Array.from(sessionsById.values());
@@ -470,19 +446,15 @@ async function gracefulShutdown(httpServer, wss) {
   }
 
   wss.close();
-
   await closeDatabase();
 
-  httpServer.close(() => {
-    process.exit(0);
-  });
+  httpServer.close(() => process.exit(0));
 }
 
 async function bootstrap() {
   await initDatabase();
 
-  const tlsCredentials = loadTlsCredentials();
-  const httpServer = https.createServer(tlsCredentials, (req, res) => {
+  const httpServer = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Blackjack WSS server running.\n");
   });
@@ -502,9 +474,8 @@ async function bootstrap() {
 
     socket.on("close", () => {
       const sessionId = sessionIdBySocket.get(socket);
-      if (!sessionId) {
-        return;
-      }
+      if (!sessionId) return;
+
       const session = sessionsById.get(sessionId);
       if (session) {
         void cleanupSession(session, {
@@ -516,19 +487,14 @@ async function bootstrap() {
   });
 
   httpServer.listen(PORT, HOST, () => {
-    console.log(`Servidor HTTPS/WSS en https://${HOST}:${PORT}`);
+    console.log(`Servidor en http://${HOST}:${PORT}`);
   });
 
-  process.on("SIGINT", () => {
-    void gracefulShutdown(httpServer, wss);
-  });
-
-  process.on("SIGTERM", () => {
-    void gracefulShutdown(httpServer, wss);
-  });
+  process.on("SIGINT", () => void gracefulShutdown(httpServer, wss));
+  process.on("SIGTERM", () => void gracefulShutdown(httpServer, wss));
 }
 
 bootstrap().catch((error) => {
-  console.error("Error al iniciar el servidor:", error.message);
+  console.error("Error al iniciar:", error.message);
   process.exit(1);
 });
