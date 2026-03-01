@@ -1,0 +1,14 @@
+{
+  "name": "blackjack-server",
+  "version": "1.0.0",
+  "description": "Servidor Blackjack con TLS, WSS, Worker Threads y SQLite",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.7",
+    "ws": "^8.18.0"
+  }
+}
